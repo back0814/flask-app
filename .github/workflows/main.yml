@@ -1,0 +1,48 @@
+name: Python App CI/CD
+
+on:
+  push:
+    branches: ["master"]
+
+jobs:
+  build-and-push-docker-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 도커 Hub 로그인
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 이미지 빌드 & 푸시
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/flask-app:latest
+
+  deploy-to-kubernetes:
+    needs: build-and-push-docker-image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # kubeconfig Base64 → 파일로 디코딩
+      - name: Set up Kubeconfig
+        run: |
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+
+      # 도커 이미지 최신 버전 배포
+      - name: Apply Deployment & Service
+        run: |
+          sed -i "s|<이미지명>|${{ secrets.DOCKERHUB_USERNAME }}/flask-app:latest|g" deployment.yaml
+          kubectl apply -f deployment.yaml
+          kubectl apply -f service.yaml
